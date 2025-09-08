@@ -59,7 +59,7 @@ class MainMenuScene extends Phaser.Scene {
         this.background.setTileScale(this.scale.width / this.background.width);
 
         if (!music || !music.isPlaying) {
-            music = this.sound.add('music', { loop: true, volume: 0.4 });
+            music = this.sound.add('music', { loop: true, volume: 0.2 });
             music.play();
         }
 
@@ -120,7 +120,7 @@ class GameScene extends Phaser.Scene {
         // --- AÑADIDO: Sonido de impulso al pulsar ---
         this.input.on('pointerdown', () => {
             // Reproducimos el sonido de impulso con un volumen bajo para que no sea molesto
-            this.sound.play('impulse_sfx', { volume: 0.1 });
+            this.sound.play('impulse_sfx', { volume: 0.03 });
         });
         // ---------------------------------------------
 
