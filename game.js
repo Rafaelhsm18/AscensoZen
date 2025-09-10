@@ -63,6 +63,10 @@ class MainMenuScene extends Phaser.Scene {
         this.background.setTileScale(this.scale.width / this.background.width);
         if (!music || !music.isPlaying) { music = this.sound.add('music', { loop: true, volume: 0.4 }); music.play(); }
 
+        // --- CORRECCIÓN: Se actualizan los valores desde localStorage cada vez que se crea el menú ---
+        highscore = localStorage.getItem('ascensoZenHighscore') || 0;
+        totalFichas = parseInt(localStorage.getItem('ascensoZenFichas') || '0');
+
         const title = this.add.text(this.scale.width / 2, this.scale.height * 0.2, 'Ascenso Zen', { fontFamily: 'Impact, "Arial Black", sans-serif', fontSize: '80px', stroke: '#001a33', strokeThickness: 8, shadow: { offsetX: 5, offsetY: 5, color: '#000000', blur: 8, stroke: true, fill: true } }).setOrigin(0.5);
         const gradient = title.context.createLinearGradient(0, 0, 0, title.height);
         gradient.addColorStop(0, '#87CEEB'); gradient.addColorStop(1, '#00BFFF');
@@ -88,7 +92,16 @@ class MainMenuScene extends Phaser.Scene {
 // =================================================================
 class GameScene extends Phaser.Scene {
     constructor() { super('GameScene'); }
-    init(data) { this.score = data.score || 0; this.fichas = data.fichas || 0; this.hasContinued = data.hasContinued || false; }
+    init(data) {
+        this.score = data.score || 0;
+        this.fichas = data.fichas || 0;
+        this.hasContinued = data.hasContinued || false;
+        
+        this.gameSpeed = 1;
+        this.speedIncreaseMilestone = 300;
+        this.speedMultiplier = 0.1;
+        this.maxGameSpeed = 4.0;
+    }
     create() {
         this.background = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'background_vertical').setOrigin(0,0);
         this.background.setTileScale(this.scale.width / this.background.width);
@@ -119,12 +132,8 @@ class GameScene extends Phaser.Scene {
         this.scoreText = this.add.text(this.scale.width / 2, 35, `${this.score}`, { ...uiStyle, fontSize: '36px' }).setOrigin(0.5).setDepth(100);
         this.add.text(this.scale.width - 75, 35, `🏆`, { fontSize: '28px' }).setDepth(100);
         this.highscoreText = this.add.text(this.scale.width - 35, 35, `${highscore}`, uiStyle).setOrigin(1, 0.5).setDepth(100);
-
-        // --- INICIO DE LA CORRECCIÓN ---
-        // Se elimina la función separada y se vuelve a poner la lógica directamente
-        // en el timer usando una función de flecha `() => {}`, que es la forma más segura
-        // de mantener el contexto `this` y evitar el bloqueo.
-        this.time.addEvent({ 
+        
+        this.scoreTimer = this.time.addEvent({ 
             delay: 100, 
             callback: () => {
                 this.score++;
@@ -133,22 +142,39 @@ class GameScene extends Phaser.Scene {
                     this.highscoreText.setText(this.score);
                     this.highscoreText.setFill('#f3a800');
                 }
+                if (this.score > 0 && this.score % this.speedIncreaseMilestone === 0) {
+                    if (this.gameSpeed < this.maxGameSpeed) {
+                       this.gameSpeed += this.speedMultiplier;
+                       // --- CORRECCIÓN: Se actualiza la velocidad de los cangrejos en pantalla ---
+                       this.obstacles.getChildren().forEach(crab => {
+                           if (crab.active) {
+                               crab.body.velocity.y = 250 * this.gameSpeed;
+                           }
+                       });
+                    }
+                }
             }, 
             loop: true 
         });
-        // --- FIN DE LA CORRECCIÓN ---
         
-        this.time.addEvent({ delay: 1500, callback: this.addObstacleRow, callbackScope: this, loop: true });
+        this.obstacleTimerDelay = 1500;
+        this.obstacleTimer = this.time.addEvent({ delay: this.obstacleTimerDelay, callback: this.addObstacleRow, callbackScope: this, loop: true });
+        
         this.time.addEvent({ delay: 3100, callback: this.addFicha, callbackScope: this, loop: true });
     }
 
     update() {
-        this.background.tilePositionY -= 1.0;
+        this.background.tilePositionY -= (1.0 * this.gameSpeed);
         if (this.input.activePointer.isDown) { this.player.body.velocity.x = 280; } else { this.player.body.velocity.x = -280; }
+        
+        if (this.obstacleTimer) {
+            this.obstacleTimer.delay = this.obstacleTimerDelay / this.gameSpeed;
+        }
     }
 
     addObstacleRow() {
-        const gap = 220, position = Phaser.Math.Between(50 + gap / 2, this.scale.width - 50 - gap / 2);
+        const gap = 220;
+        const position = Phaser.Math.Between(50 + gap / 2, this.scale.width - 50 - gap / 2);
         const leftEdge = position - gap / 2, rightEdge = position + gap / 2;
         const obstacleY = -50, crabSize = 48;
         for (let x = crabSize / 2; x < leftEdge; x += crabSize) { this.createCrab(x, obstacleY); }
@@ -156,7 +182,7 @@ class GameScene extends Phaser.Scene {
     }
     createCrab(x, y) {
         const crab = this.obstacles.create(x, y, 'obstacle_cangrejo');
-        crab.body.velocity.y = 250;
+        crab.body.velocity.y = 250 * this.gameSpeed;
         crab.setDepth(10);
         const randomDelay = Phaser.Math.Between(0, 500);
         this.time.delayedCall(randomDelay, () => { if (crab.active) { crab.play('crab_pinch'); } });
@@ -165,7 +191,7 @@ class GameScene extends Phaser.Scene {
     addFicha() {
         const x = Phaser.Math.Between(50, this.scale.width - 50);
         const ficha = this.fichasGroup.create(x, -50, 'collectible_almeja');
-        ficha.body.velocity.y = 300;
+        ficha.body.velocity.y = 300 * this.gameSpeed;
         ficha.setScale(0.8);
         this.tweens.add({ targets: ficha, angle: 360, duration: 4000, repeat: -1 });
         this.time.delayedCall(5000, () => { if (ficha.active) ficha.destroy(); });
@@ -198,6 +224,9 @@ class GameScene extends Phaser.Scene {
     }
 
     gameOver() {
+        // --- CORRECCIÓN: Detenemos el timer de la puntuación ---
+        if (this.scoreTimer) { this.scoreTimer.destroy(); }
+        
         this.sound.play('gameover_sfx');
         this.physics.pause();
         this.player.setTint(0xff0000);
